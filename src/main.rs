@@ -10,7 +10,7 @@ fn main() {
 
 fn num_to_bool(values: &Vec<i32>) -> Vec<bool> {
     let mut bits = vec![];
-    for value in values.into_iter() {
+    for value in values.iter() {
         if *value == 0 {
             bits.push(false);
         } else {
@@ -23,13 +23,35 @@ fn num_to_bool(values: &Vec<i32>) -> Vec<bool> {
 fn hamming_encode(bits: &Vec<bool>) -> Vec<bool> {
     let mut encoded = add_bits(bits);
 
-    let controlling_bits = calculate_controlling_bits(&encoded, encoded.len() - bits.len());
+    let controlling_bits = calculate_controlling_bits(&encoded);
 
     for (index, value) in controlling_bits.into_iter() {
         encoded[index] = value;
     }
 
     encoded
+}
+
+fn hamming_decode(bits: &Vec<bool>) -> Vec<bool> {
+    let controlling_bits = calculate_controlling_bits(bits);
+    let mut error_spot = None;
+    for (index, value) in controlling_bits.into_iter() {
+        if value {
+            match error_spot {
+                None => error_spot = Some(index + 1),
+                Some(spot) => error_spot = Some(spot + index + 1),
+            }
+        }
+    }
+
+    if let Some(spot) = error_spot {
+        let spot = spot - 1;
+        let mut corrected = bits.clone();
+        corrected[spot] = corrected[spot].bitxor(true);
+        remove_bits(&corrected)
+    } else {
+        remove_bits(bits)
+    }
 }
 
 fn add_bits(bits: &Vec<bool>) -> Vec<bool> {
@@ -48,8 +70,18 @@ fn add_bits(bits: &Vec<bool>) -> Vec<bool> {
     encoded
 }
 
-fn calculate_controlling_bits(bits: &Vec<bool>, bits_amount: usize) -> HashMap<usize, bool>{
-    let mut controlling_bits = HashMap::with_capacity(bits_amount);
+fn remove_bits(bits: &[bool]) -> Vec<bool> {
+    let mut decoded = Vec::new();
+    for (index, _) in bits.iter().enumerate() {
+        if !is_power_of_two(index + 1) {
+            decoded.push(bits[index]);
+        }
+    }
+    decoded
+}
+
+fn calculate_controlling_bits(bits: &Vec<bool>) -> HashMap<usize, bool>{
+    let mut controlling_bits = HashMap::new();
     for (index, _) in bits.iter().enumerate() {
         if is_power_of_two(index + 1) {
             controlling_bits.insert(index, calculate_bit_at(bits, index + 1));
@@ -61,7 +93,7 @@ fn calculate_controlling_bits(bits: &Vec<bool>, bits_amount: usize) -> HashMap<u
 fn calculate_bit_at(bits: &Vec<bool>, position: usize) -> bool {
     let mut bit = false;
     let shift = position.ilog2();
-    for (index, value) in bits.into_iter().enumerate() {
+    for (index, value) in bits.iter().enumerate() {
         if bit_at_position(index + 1, shift) == 1 {
             bit = bit.bitxor(value);
         }
@@ -103,5 +135,20 @@ mod tests {
         let vec = num_to_bool(&vec![1,0,0,1,1,0,1,0]);
         let encoded = hamming_encode(&vec);
         assert_eq!(vec![false, true, true, true, false, false, true, false, true, false, true, false], encoded);
+    }
+
+    #[test]
+    fn hamming_decode_on_correct_test() {
+        let vec = num_to_bool(&vec![1,0,0,1,1,0,1,0]);
+        let encoded = hamming_encode(&vec);
+        let decoded = hamming_decode(&encoded);
+        assert_eq!(vec, decoded);
+    }
+
+    #[test]
+    fn hamming_decode_on_incorrect_test() {
+        let initial = num_to_bool(&vec![1,0,0,1,1,0,1,0]);
+        let incorrect = num_to_bool(&vec![0,1,0,1,0,0,1,0,1,0,1,0]); // error on 2nd position
+        assert_eq!(hamming_decode(&incorrect), initial);
     }
 }
