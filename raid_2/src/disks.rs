@@ -1,15 +1,8 @@
 use crate::hamming;
 
 #[derive(Clone)]
-enum DiskType {
-    Data,
-    Parity,
-}
-
-#[derive(Clone)]
 struct Disk {
     info: Vec<bool>,
-    disk_type: DiskType,
 }
 
 struct Data {
@@ -37,10 +30,9 @@ fn get_power_of_two(num: usize) -> usize {
 }
 
 impl Disk {
-    fn new(disk_size: usize, disk_type: DiskType) -> Self {
+    fn new(disk_size: usize) -> Self {
         Self {
             info: Vec::with_capacity(disk_size),
-            disk_type
         }
     }
 
@@ -65,7 +57,7 @@ impl Data {
     pub fn new(disk_count: usize, disk_size: usize) -> Self {
         Self {
             disk_count,
-            disks: vec![Disk::new(disk_size, DiskType::Data); disk_count],
+            disks: vec![Disk::new(disk_size); disk_count],
             last_index: 0,
             last_layer: 0,
             total_capacity: disk_count * disk_size,
@@ -148,7 +140,7 @@ impl<'a> Raid<'a> {
     fn new(data: &'a mut Data) -> Self {
         let parity_count = hamming::parity_bits_count(data.disk_count);
         Self {
-            parity_disks: vec![Disk::new(data.disks[0].info.capacity(), DiskType::Parity); parity_count],
+            parity_disks: vec![Disk::new(data.disks[0].info.capacity()); parity_count],
             data,
             parity_count,
         }
@@ -212,11 +204,11 @@ impl<'a> Raid<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::disks::{Disk, Data, DiskType, Raid};
+    use crate::disks::{Disk, Data, Raid};
 
     #[test]
     fn disk_write_get_test() {
-        let mut disk = Disk::new(16, DiskType::Data);
+        let mut disk = Disk::new(16);
         disk.write(false);
         disk.write(true);
 
@@ -226,7 +218,7 @@ mod tests {
 
     #[test]
     fn disk_get_last_test() {
-        let mut disk = Disk::new(16, DiskType::Data);
+        let mut disk = Disk::new(16);
         disk.write(false);
         disk.write(true);
 
