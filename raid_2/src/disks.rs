@@ -199,7 +199,7 @@ impl<'a> Raid<'a> {
 
         for layer in starting_layer..=ending_layer {
             if let (_, Some(spot)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
-                self.data.flip_bit_at(start_index + spot.unwrap() + 1);
+                self.data.flip_bit_at(start_index + spot + 1);
                 if let (_, Some(_)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
                     panic!("no way bro");
                 }
@@ -360,6 +360,7 @@ mod tests {
 
         raid.data.disks[0].info[1] = false;
         let slice = raid.get_slice(1, 6).unwrap();
-        assert_eq!(slice, &[false, true, true, true, true])
+        assert_eq!(slice, &[false, true, true, true, true]);
+        assert_eq!(raid.data.disks[0].info[1], true);
     }
 }
