@@ -60,7 +60,7 @@ pub fn parity_bits_count(len: usize) -> usize {
     count
 }
 
-fn add_bits(bits: &Vec<bool>) -> Vec<bool> {
+pub fn add_bits(bits: &[bool]) -> Vec<bool> {
     let mut encoded = Vec::new();
     let mut index = 0;
     let mut total_index = 0;
