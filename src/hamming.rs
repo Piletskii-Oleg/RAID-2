@@ -50,9 +50,11 @@ pub fn hamming_decode(bits: &[bool]) -> Vec<bool> {
 pub fn parity_bits_count(len: usize) -> usize {
     let mut count = 0;
     let mut two_power = 1;
-    while two_power < len + two_power + 1 {
+    let mut power = 0;
+    while two_power < len + power + 1 {
         count += 1;
         two_power *= 2;
+        power += 1;
     }
 
     count
