@@ -36,40 +36,6 @@ fn get_power_of_two(num: usize) -> usize {
     count
 }
 
-impl<'a> Raid<'a> {
-    fn new(data: &'a mut Data) -> Self {
-        let parity_count = hamming::parity_bits_count(data.disk_count);
-        Self {
-            parity_disks: vec![Disk::new(data.disks[0].info.capacity(), DiskType::Parity); parity_count],
-            data,
-            parity_count,
-        }
-    }
-
-    fn encode_single_sequence(&mut self, bits: &[bool]) {
-        let bits_extra = hamming::add_bits(bits);
-        let parity_bits = hamming::calculate_parity_bits(&bits_extra);
-
-        for (index, value) in parity_bits.into_iter() {
-            self.parity_disks[get_power_of_two(index + 1)].write(value);
-        }
-    }
-
-    fn write_sequence(&mut self, bits: &[bool]) -> Result<(), &str> {
-        let before_layer = self.data.last_layer;
-        match self.data.write_sequence(bits) {
-            Err(_) => Err("Not enough space"),
-            Ok(()) => {
-                let after_layer = self.data.last_layer;
-                for layer in before_layer..after_layer {
-                    self.encode_single_sequence(self.data.get_data_layer(layer).unwrap().as_slice());
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
 impl Disk {
     fn new(disk_size: usize, disk_type: DiskType) -> Self {
         Self {
@@ -115,7 +81,7 @@ impl Data {
         for (index, value) in bits.iter().enumerate() {
             let adjusted_index = (previous_last_index + index) % self.disk_count;
             self.disks[adjusted_index].write(*value);
-            if adjusted_index == 0 && self.last_index != 0 { // TODO: fix check (right from &&)
+            if adjusted_index == self.disk_count - 1 {
                 self.last_layer += 1;
             }
             self.last_index += 1;
@@ -131,6 +97,12 @@ impl Data {
         let disk_number = index % self.disk_count;
         let adjusted_index = index / self.disk_count;
         self.disks[disk_number].get(adjusted_index)
+    }
+
+    fn flip_bit_at(&mut self, index: usize) {
+        let disk_number = index % self.disk_count;
+        let adjusted_index = index / self.disk_count;
+        self.disks[disk_number].info[adjusted_index] ^= true;
     }
 
     pub fn get_slice(&self, start_index: usize, end_index: usize) -> Result<Vec<bool>, &str> {
@@ -161,6 +133,80 @@ impl Data {
             layer.push(self.disks[i].get(layer_index).unwrap());
         }
         Ok(layer)
+    }
+
+    fn get_layer_number(&self, index: usize) -> usize {
+        index / self.disk_count
+    }
+}
+
+fn is_power_of_two(num: usize) -> bool {
+    num.count_ones() == 1 || num == 0
+}
+
+impl<'a> Raid<'a> {
+    fn new(data: &'a mut Data) -> Self {
+        let parity_count = hamming::parity_bits_count(data.disk_count);
+        Self {
+            parity_disks: vec![Disk::new(data.disks[0].info.capacity(), DiskType::Parity); parity_count],
+            data,
+            parity_count,
+        }
+    }
+
+    fn encode_single_sequence(&mut self, bits: &[bool]) {
+        let bits_extra = hamming::add_bits(bits);
+        let parity_bits = hamming::calculate_parity_bits(&bits_extra);
+
+        for (index, value) in parity_bits.into_iter() {
+            self.parity_disks[get_power_of_two(index + 1)].write(value);
+        }
+    }
+
+    fn write_sequence(&mut self, bits: &[bool]) -> Result<(), &str> {
+        let before_layer = self.data.last_layer;
+        match self.data.write_sequence(bits) {
+            Err(_) => Err("Not enough space"), // если передать ошибку дальше, то borrow checker будет ругаться
+            Ok(()) => {
+                let after_layer = self.data.last_layer;
+                for layer in before_layer..after_layer {
+                    self.encode_single_sequence(self.data.get_data_layer(layer).unwrap().as_slice());
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn construct_hamming_code(&self, layer: usize) -> Vec<bool> {
+        let mut code = Vec::new();
+        let mut data_index = 0;
+        let mut parity_index = 0;
+        while data_index + parity_index != self.parity_count + self.data.disk_count {
+            if is_power_of_two(data_index + parity_index + 1) {
+                code.push(self.parity_disks[parity_index].get(layer).unwrap());
+                parity_index += 1;
+            } else {
+                code.push(self.data.disks[data_index].get(layer).unwrap());
+                data_index += 1;
+            }
+        }
+        code
+    }
+
+    fn get_slice(&mut self, start_index: usize, end_index: usize) -> Result<Vec<bool>, &str> {
+        let starting_layer = self.data.get_layer_number(start_index);
+        let ending_layer = self.data.get_layer_number(end_index);
+
+        for layer in starting_layer..=ending_layer {
+            if let (_, Some(spot)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
+                self.data.flip_bit_at(start_index + spot.unwrap() + 1);
+                if let (_, Some(_)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
+                    panic!("no way bro");
+                }
+            }
+        }
+
+        self.data.get_slice(start_index, end_index)
     }
 }
 
@@ -265,6 +311,7 @@ mod tests {
         let mut disks = Data::new(4, 16);
         let mut raid = Raid::new(&mut disks);
         raid.write_sequence(vec![false, true, false, true, false, true, true, false, true].as_slice());
+
         assert_eq!(raid.parity_disks[0].get(0).unwrap(), false);
         assert_eq!(raid.parity_disks[1].get(0).unwrap(), true);
         assert_eq!(raid.parity_disks[2].get(0).unwrap(), false);
@@ -279,5 +326,40 @@ mod tests {
         assert_eq!(raid.parity_disks[0].get(2), Err("Index was too big."));
         assert_eq!(raid.parity_disks[1].get(2), Err("Index was too big."));
         assert_eq!(raid.parity_disks[2].get(2), Err("Index was too big."));
+    }
+
+    #[test]
+    fn raid_construct_hamming_code_test() {
+        let mut disks = Data::new(4, 16);
+        let mut raid = Raid::new(&mut disks);
+        raid.write_sequence(vec![false, true, false, true, false, true, true, false, true].as_slice());
+
+        let code = raid.construct_hamming_code(0);
+        assert_eq!(code, [false, true, false, false, true, false, true]);
+    }
+
+    #[test]
+    fn raid_get_slice_test() {
+        let mut disks = Data::new(4, 16);
+        let mut raid = Raid::new(&mut disks);
+
+        raid.write_sequence(vec![false, false, true, true].as_slice());
+        raid.write_sequence(vec![true, true, true, true].as_slice());
+
+        let slice = raid.get_slice(1, 6).unwrap();
+        assert_eq!(slice, &[false, true, true, true, true])
+    }
+
+    #[test]
+    fn raid_get_slice_can_fix_error_test() {
+        let mut disks = Data::new(4, 16);
+        let mut raid = Raid::new(&mut disks);
+
+        raid.write_sequence(vec![false, false, true, true].as_slice());
+        raid.write_sequence(vec![true, true, true, true].as_slice());
+
+        raid.data.disks[0].info[1] = false;
+        let slice = raid.get_slice(1, 6).unwrap();
+        assert_eq!(slice, &[false, true, true, true, true])
     }
 }

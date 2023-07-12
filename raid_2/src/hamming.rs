@@ -25,7 +25,7 @@ pub fn hamming_encode(bits: &Vec<bool>) -> Vec<bool> {
     encoded
 }
 
-pub fn hamming_decode(bits: &[bool]) -> Vec<bool> {
+pub fn hamming_decode(bits: &[bool]) -> (Vec<bool>, Option<usize>) {
     let parity_bits = calculate_parity_bits(bits);
     let mut error_spot = None;
     for (index, value) in parity_bits.into_iter() {
@@ -41,9 +41,9 @@ pub fn hamming_decode(bits: &[bool]) -> Vec<bool> {
         let spot = spot - 1;
         let mut corrected = bits.to_owned();
         corrected[spot] = corrected[spot].bitxor(true);
-        remove_bits(&corrected)
+        (remove_bits(&corrected), Some(spot))
     } else {
-        remove_bits(bits)
+        (remove_bits(bits), None)
     }
 }
 
@@ -148,13 +148,13 @@ mod tests {
         let vec = num_to_bool(&vec![1,0,0,1,1,0,1,0]);
         let encoded = hamming_encode(&vec);
         let decoded = hamming_decode(&encoded);
-        assert_eq!(vec, decoded);
+        assert_eq!(vec, decoded.0);
     }
 
     #[test]
     fn hamming_decode_on_incorrect_test() {
         let initial = num_to_bool(&vec![1,0,0,1,1,0,1,0]);
         let incorrect = num_to_bool(&vec![0,1,0,1,0,0,1,0,1,0,1,0]); // error on 2nd position
-        assert_eq!(hamming_decode(&incorrect), initial);
+        assert_eq!(hamming_decode(&incorrect), (initial, Some(2)));
     }
 }
