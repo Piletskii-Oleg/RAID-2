@@ -26,6 +26,16 @@ struct Raid<'a> {
     parity_count: usize
 }
 
+fn get_power_of_two(num: usize) -> usize {
+    let mut result = num;
+    let mut count = 0;
+    while result > 1 {
+        result = result >> 1;
+        count += 1;
+    }
+    count
+}
+
 impl<'a> Raid<'a> {
     fn new(data: &'a mut Data) -> Self {
         let parity_count = hamming::parity_bits_count(data.disk_count);
@@ -40,8 +50,8 @@ impl<'a> Raid<'a> {
         let bits_extra = hamming::add_bits(bits);
         let parity_bits = hamming::calculate_parity_bits(&bits_extra);
 
-        for (index, (_, value)) in parity_bits.iter().enumerate() {
-            self.parity_disks[index].write(*value);
+        for (index, value) in parity_bits.into_iter() {
+            self.parity_disks[get_power_of_two(index + 1)].write(value);
         }
     }
 
@@ -101,15 +111,15 @@ impl Data {
             return Err("Not enough space");
         }
 
+        let previous_last_index = self.last_index;
         for (index, value) in bits.iter().enumerate() {
-            let adjusted_index = (self.last_index + index) % self.disk_count;
+            let adjusted_index = (previous_last_index + index) % self.disk_count;
             self.disks[adjusted_index].write(*value);
             if adjusted_index == 0 && self.last_index != 0 { // TODO: fix check (right from &&)
                 self.last_layer += 1;
             }
+            self.last_index += 1;
         }
-
-        self.last_index += bits.len();
         Ok(())
     }
 
@@ -141,7 +151,7 @@ impl Data {
             (layer_index == self.last_index / self.disk_count && self.last_index % self.disk_count == 0)
     }
 
-    fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, &str> {
+    pub fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, &str> {
         if layer_index > self.last_index / self.disk_count || !self.is_layer_full(layer_index) {
             return Err("Layer is not full");
         }
@@ -258,5 +268,16 @@ mod tests {
         assert_eq!(raid.parity_disks[0].get(0).unwrap(), false);
         assert_eq!(raid.parity_disks[1].get(0).unwrap(), true);
         assert_eq!(raid.parity_disks[2].get(0).unwrap(), false);
+
+        assert_eq!(raid.data.get_data_layer(0).unwrap(), [false, true, false, true]);
+        assert_eq!(raid.data.get_data_layer(1).unwrap(), [false, true, true, false]);
+
+        assert_eq!(raid.parity_disks[0].get(1).unwrap(), true);
+        assert_eq!(raid.parity_disks[1].get(1).unwrap(), true);
+        assert_eq!(raid.parity_disks[2].get(1).unwrap(), false);
+
+        assert_eq!(raid.parity_disks[0].get(2), Err("Index was too big."));
+        assert_eq!(raid.parity_disks[1].get(2), Err("Index was too big."));
+        assert_eq!(raid.parity_disks[2].get(2), Err("Index was too big."));
     }
 }

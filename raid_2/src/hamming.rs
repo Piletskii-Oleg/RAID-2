@@ -86,7 +86,7 @@ fn remove_bits(bits: &[bool]) -> Vec<bool> {
     decoded
 }
 
-pub fn calculate_parity_bits(bits: &[bool]) -> HashMap<usize, bool>{
+pub fn calculate_parity_bits(bits: &[bool]) -> HashMap<usize, bool> {
     let mut parity_bits = HashMap::new();
     for (index, _) in bits.iter().enumerate() {
         if is_power_of_two(index + 1) {
@@ -99,9 +99,9 @@ pub fn calculate_parity_bits(bits: &[bool]) -> HashMap<usize, bool>{
 fn calculate_bit_at(bits: &[bool], position: usize) -> bool {
     let mut bit = false;
     let shift = position.ilog2();
-    for (index, value) in bits.iter().enumerate() {
+    for (index, value) in bits.into_iter().enumerate() {
         if bit_from_right(index + 1, shift) == 1 {
-            bit = bit.bitxor(value);
+            bit ^= *value;
         }
     }
     bit
