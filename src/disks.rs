@@ -12,12 +12,30 @@ struct Disk {
     disk_type: DiskType,
 }
 
-struct Disks {
-    data: Vec<Disk>,
-    parity: Vec<Disk>,
-    data_disks: usize,
-    parity_disks: usize,
+struct Data {
+    disks: Vec<Disk>,
+    disk_count: usize,
     last_index: usize,
+    last_layer: usize,
+    total_capacity: usize
+}
+
+struct Raid {
+    data: Data,
+    parity_disks: Vec<Disk>,
+    parity_count: usize
+}
+
+impl Raid {
+    fn encode_single_sequence(&mut self, bits: &[bool]) {
+        let parity_bits = hamming::calculate_parity_bits(bits);
+
+        for (index, (_, value)) in parity_bits.iter().enumerate() {
+            self.parity_disks[index].write(*value);
+        }
+    }
+
+
 }
 
 impl Disk {
@@ -33,7 +51,7 @@ impl Disk {
     }
 
     fn get(&self, index: usize) -> Result<bool, &str> {
-        if index > self.info.len() {
+        if index >= self.info.len() {
             Err("Index was too big.")
         } else {
             Ok(self.info[index])
@@ -45,49 +63,45 @@ impl Disk {
     }
 }
 
-impl Disks {
-    fn new(data_disks: usize, disk_size: usize) -> Self {
-        let parity_disks = hamming::parity_bits_count(data_disks);
+impl Data {
+    pub fn new(disk_count: usize, disk_size: usize) -> Self {
         Self {
-            data_disks,
-            parity_disks,
-            data: vec![Disk::new(disk_size, DiskType::Data); data_disks],
-            parity: vec![Disk::new(disk_size, DiskType::Parity); parity_disks],
+            disk_count,
+            disks: vec![Disk::new(disk_size, DiskType::Data); disk_count],
             last_index: 0,
+            last_layer: 0,
+            total_capacity: disk_count * disk_size,
         }
     }
 
-    fn write_sequence(&mut self, bits: &[bool]) {
+    pub fn write_sequence(&mut self, bits: &[bool]) -> Result<(), &str> {
+        if self.last_index + bits.len() >= self.total_capacity {
+            return Err("Not enough space");
+        }
+
         for (index, value) in bits.iter().enumerate() {
-            let adjusted_index = index % self.data_disks;
-            self.data[adjusted_index].write(*value);
+            let adjusted_index = (self.last_index + index) % self.disk_count;
+            self.disks[adjusted_index].write(*value);
+            if adjusted_index == 0 {
+                self.last_layer += 1;
+            }
         }
+
         self.last_index += bits.len();
+        Ok(())
     }
 
-    fn encode_single_sequence(&mut self, bits: &[bool]) {
-        let parity_bits = hamming::calculate_parity_bits(bits);
-
-        for (index, (_, value)) in parity_bits.iter().enumerate() {
-            self.parity[index].write(*value);
-        }
-    }
-
-    fn encode_sequence(&self, bits: &[bool]) {
-
-    }
-
-    fn get_bit(&self, index: usize) -> Result<bool, &str> {
+    pub fn get_bit(&self, index: usize) -> Result<bool, &str> {
         if index > self.last_index {
             return Err("Index was too big.");
         }
 
-        let disk_number = index % self.data_disks;
-        let adjusted_index = index / self.data_disks;
-        self.data[disk_number].get(adjusted_index)
+        let disk_number = index % self.disk_count;
+        let adjusted_index = index / self.disk_count;
+        self.disks[disk_number].get(adjusted_index)
     }
 
-    fn get_slice(&self, start_index: usize, end_index: usize) -> Result<Vec<bool>, &str> {
+    pub fn get_slice(&self, start_index: usize, end_index: usize) -> Result<Vec<bool>, &str> {
         if end_index > self.last_index {
             return Err("End index is larger than the biggest possible index.");
         }
@@ -101,18 +115,18 @@ impl Disks {
     }
 
     fn is_layer_full(&self, layer_index: usize) -> bool {
-        layer_index < self.last_index / self.data_disks ||
-            (layer_index == self.last_index / self.data_disks && self.last_index % self.data_disks == 0)
+        layer_index < self.last_index / self.disk_count ||
+            (layer_index == self.last_index / self.disk_count && self.last_index % self.disk_count == 0)
     }
 
-    fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, &str> {
-        if layer_index > self.last_index / self.data_disks || !self.is_layer_full(layer_index) {
+    pub fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, &str> {
+        if layer_index > self.last_index / self.disk_count || !self.is_layer_full(layer_index) {
             return Err("Layer is not full");
         }
 
-        let mut layer = Vec::with_capacity(self.data_disks);
+        let mut layer = Vec::with_capacity(self.disk_count);
         for i in 0..layer.capacity() {
-            layer.push(self.data[i].get(layer_index).unwrap());
+            layer.push(self.disks[i].get(layer_index).unwrap());
         }
         Ok(layer)
     }
@@ -120,7 +134,7 @@ impl Disks {
 
 #[cfg(test)]
 mod tests {
-    use crate::raid::{Disk, Disks, DiskType};
+    use crate::disks::{Disk, Data, DiskType};
 
     #[test]
     fn disk_write_get_test() {
@@ -143,39 +157,43 @@ mod tests {
 
     #[test]
     fn disks_write_single_sequence_test() {
-        let mut disks = Disks::new(4, 16);
+        let mut disks = Data::new(4, 16);
 
         disks.write_sequence(vec![false, false, true, true].as_slice());
-        assert_eq!(disks.data[0].get(0).unwrap(), false);
-        assert_eq!(disks.data[1].get(0).unwrap(), false);
-        assert_eq!(disks.data[2].get(0).unwrap(), true);
-        assert_eq!(disks.data[3].get(0).unwrap(), true);
+        assert_eq!(disks.disks[0].get(0).unwrap(), false);
+        assert_eq!(disks.disks[1].get(0).unwrap(), false);
+        assert_eq!(disks.disks[2].get(0).unwrap(), true);
+        assert_eq!(disks.disks[3].get(0).unwrap(), true);
         assert_eq!(disks.last_index, 4);
 
         disks.write_sequence(vec![true, true, false, true].as_slice());
-        assert_eq!(disks.data[0].get(1).unwrap(), true);
-        assert_eq!(disks.data[1].get(1).unwrap(), true);
-        assert_eq!(disks.data[2].get(1).unwrap(), false);
-        assert_eq!(disks.data[3].get(1).unwrap(), true);
+        assert_eq!(disks.disks[0].get(1).unwrap(), true);
+        assert_eq!(disks.disks[1].get(1).unwrap(), true);
+        assert_eq!(disks.disks[2].get(1).unwrap(), false);
+        assert_eq!(disks.disks[3].get(1).unwrap(), true);
         assert_eq!(disks.last_index, 8);
     }
 
     #[test]
     fn disks_write_multi_layer_sequence_test() {
-        let mut disks = Disks::new(4, 16);
+        let mut disks = Data::new(4, 16);
         disks.write_sequence(vec![true, false, true, true, false, false].as_slice());
-        assert_eq!(disks.data[0].get(0).unwrap(), true);
-        assert_eq!(disks.data[1].get(0).unwrap(), false);
-        assert_eq!(disks.data[2].get(0).unwrap(), true);
-        assert_eq!(disks.data[3].get(0).unwrap(), true);
+        assert_eq!(disks.disks[0].get(0).unwrap(), true);
+        assert_eq!(disks.disks[1].get(0).unwrap(), false);
+        assert_eq!(disks.disks[2].get(0).unwrap(), true);
+        assert_eq!(disks.disks[3].get(0).unwrap(), true);
 
-        assert_eq!(disks.data[0].get(1).unwrap(), false);
-        assert_eq!(disks.data[1].get(1).unwrap(), false);
+        assert_eq!(disks.disks[0].get(1).unwrap(), false);
+        assert_eq!(disks.disks[1].get(1).unwrap(), false);
+
+        disks.write_sequence(vec![true, false].as_slice());
+        assert_eq!(disks.disks[2].get(1).unwrap(), true);
+        assert_eq!(disks.disks[3].get(1).unwrap(), false);
     }
 
     #[test]
     fn disks_read_slice_test() {
-        let mut disks = Disks::new(4, 16);
+        let mut disks = Data::new(4, 16);
 
         disks.write_sequence(vec![false, false, true, true].as_slice());
         disks.write_sequence(vec![true, true, true, true].as_slice());
@@ -186,7 +204,7 @@ mod tests {
 
     #[test]
     fn disks_read_bit_test() {
-        let mut disks = Disks::new(4, 16);
+        let mut disks = Data::new(4, 16);
 
         disks.write_sequence(vec![false, true, false, true].as_slice());
         disks.write_sequence(vec![false, true, true, false].as_slice());
@@ -200,7 +218,7 @@ mod tests {
 
     #[test]
     fn disks_get_layer_test() {
-        let mut disks = Disks::new(4, 16);
+        let mut disks = Data::new(4, 16);
 
         disks.write_sequence(vec![false, true, false, true, false, true, true, false, true].as_slice());
 
@@ -208,5 +226,4 @@ mod tests {
         assert_eq!(disks.get_data_layer(1).unwrap(), [false, true, true, false]);
         assert_eq!(disks.get_data_layer(2), Err("Layer is not full"));
     }
-
 }

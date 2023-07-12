@@ -100,14 +100,14 @@ fn calculate_bit_at(bits: &[bool], position: usize) -> bool {
     let mut bit = false;
     let shift = position.ilog2();
     for (index, value) in bits.iter().enumerate() {
-        if bit_at_position(index + 1, shift) == 1 {
+        if bit_from_right(index + 1, shift) == 1 {
             bit = bit.bitxor(value);
         }
     }
     bit
 }
 
-fn bit_at_position(number: usize, shift: u32) -> usize {
+fn bit_from_right(number: usize, shift: u32) -> usize {
     ((number) >> (shift)) % 2
 }
 
@@ -121,11 +121,11 @@ mod tests {
 
     #[test]
     fn bit_at_position_test() { // 22 = 0b10110
-        assert_eq!(0, bit_at_position(22, 0));
-        assert_eq!(1, bit_at_position(22, 1));
-        assert_eq!(1, bit_at_position(22, 2));
-        assert_eq!(0, bit_at_position(22, 3));
-        assert_eq!(1, bit_at_position(22, 4));
+        assert_eq!(0, bit_from_right(22, 0));
+        assert_eq!(1, bit_from_right(22, 1));
+        assert_eq!(1, bit_from_right(22, 2));
+        assert_eq!(0, bit_from_right(22, 3));
+        assert_eq!(1, bit_from_right(22, 4));
     }
 
     #[test]
