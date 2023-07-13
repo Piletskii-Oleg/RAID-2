@@ -1,3 +1,4 @@
+use std::ops::Range;
 use crate::hamming;
 
 #[derive(Clone)]
@@ -40,6 +41,10 @@ impl Disk {
         self.info.push(bit);
     }
 
+    fn flip_at(&mut self, index: usize) {
+        self.info[index] ^= true;
+    }
+
     fn get(&self, index: usize) -> Result<bool, &str> {
         if index >= self.info.len() {
             Err("Index was too big.")
@@ -54,7 +59,7 @@ impl Disk {
 }
 
 impl Data {
-    pub fn new(disk_count: usize, disk_size: usize) -> Self {
+    fn new(disk_count: usize, disk_size: usize) -> Self {
         Self {
             disk_count,
             disks: vec![Disk::new(disk_size); disk_count],
@@ -64,7 +69,7 @@ impl Data {
         }
     }
 
-    pub fn write_sequence(&mut self, bits: &[bool]) -> Result<(), &str> {
+    fn write_sequence(&mut self, bits: &[bool]) -> Result<(), &str> {
         if self.last_index + bits.len() >= self.total_capacity {
             return Err("Not enough space");
         }
@@ -81,7 +86,7 @@ impl Data {
         Ok(())
     }
 
-    pub fn get_bit(&self, index: usize) -> Result<bool, &str> {
+    fn get_bit(&self, index: usize) -> Result<bool, &str> {
         if index > self.last_index {
             return Err("Index was too big.");
         }
@@ -94,16 +99,16 @@ impl Data {
     fn flip_bit_at(&mut self, index: usize) {
         let disk_number = index % self.disk_count;
         let adjusted_index = index / self.disk_count;
-        self.disks[disk_number].info[adjusted_index] ^= true;
+        self.disks[disk_number].flip_at(adjusted_index);
     }
 
-    pub fn get_slice(&self, start_index: usize, end_index: usize) -> Result<Vec<bool>, &str> {
-        if end_index > self.last_index {
+    fn get_slice(&self, range: Range<usize>) -> Result<Vec<bool>, &str> {
+        if range.end > self.last_index {
             return Err("End index is larger than the biggest possible index.");
         }
 
-        let mut result = Vec::with_capacity(end_index - start_index);
-        for index in start_index..end_index {
+        let mut result = Vec::with_capacity(range.len());
+        for index in range {
             result.push(self.get_bit(index).unwrap()) // TODO: remove unwrap
         }
 
@@ -115,7 +120,7 @@ impl Data {
             (layer_index == self.last_index / self.disk_count && self.last_index % self.disk_count == 0)
     }
 
-    pub fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, &str> {
+    fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, &str> {
         if layer_index > self.last_index / self.disk_count || !self.is_layer_full(layer_index) {
             return Err("Layer is not full");
         }
@@ -137,7 +142,7 @@ fn is_power_of_two(num: usize) -> bool {
 }
 
 impl<'a> Raid<'a> {
-    fn new(data: &'a mut Data) -> Self {
+    pub fn new(data: &'a mut Data) -> Self {
         let parity_count = hamming::parity_bits_count(data.disk_count);
         Self {
             parity_disks: vec![Disk::new(data.disks[0].info.capacity()); parity_count],
@@ -155,10 +160,10 @@ impl<'a> Raid<'a> {
         }
     }
 
-    fn write_sequence(&mut self, bits: &[bool]) -> Result<(), &str> {
+    pub fn write_sequence(&mut self, bits: &[bool]) -> Result<(), String> {
         let before_layer = self.data.last_layer;
         match self.data.write_sequence(bits) {
-            Err(_) => Err("Not enough space"), // если передать ошибку дальше, то borrow checker будет ругаться
+            Err(error) => Err(error.to_owned()),
             Ok(()) => {
                 let after_layer = self.data.last_layer;
                 for layer in before_layer..after_layer {
@@ -185,21 +190,34 @@ impl<'a> Raid<'a> {
         code
     }
 
-    fn get_slice(&mut self, start_index: usize, end_index: usize) -> Result<Vec<bool>, &str> {
-        let starting_layer = self.data.get_layer_number(start_index);
-        let ending_layer = self.data.get_layer_number(end_index);
+    pub fn get_slice(&mut self, range: Range<usize>) -> Result<Vec<bool>, &str> {
+        let starting_layer = self.data.get_layer_number(range.start);
+        let ending_layer = self.data.get_layer_number(range.end);
 
         for layer in starting_layer..=ending_layer {
-            if let (_, Some(spot)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
-                self.data.flip_bit_at(start_index + spot + 1);
-                if let (_, Some(_)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
-                    panic!("no way bro");
-                }
-            }
+            self.try_fix_error(range.start, layer);
         }
 
-        self.data.get_slice(start_index, end_index)
+        self.data.get_slice(range)
     }
+
+    fn try_fix_error(&mut self, start_index: usize, layer: usize) {
+        if let (_, Some(spot)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
+            self.data.flip_bit_at(start_index + spot + 1);
+            if let (_, Some(_)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
+                panic!("no way bro");
+            }
+        }
+    }
+
+    fn get_bit(&mut self, index: usize) -> Result<bool, &str> {
+        match self.get_slice((index..index + 1)) {
+            Ok(element) => Ok(element[0]),
+            Err(error) => Err(error),
+        }
+    }
+
+
 }
 
 #[cfg(test)]
@@ -269,7 +287,7 @@ mod tests {
         disks.write_sequence(vec![false, false, true, true].as_slice());
         disks.write_sequence(vec![true, true, true, true].as_slice());
 
-        let slice = disks.get_slice(1, 6).unwrap();
+        let slice = disks.get_slice((1..6)).unwrap();
         assert_eq!(slice, &[false, true, true, true, true])
     }
 
@@ -338,7 +356,7 @@ mod tests {
         raid.write_sequence(vec![false, false, true, true].as_slice());
         raid.write_sequence(vec![true, true, true, true].as_slice());
 
-        let slice = raid.get_slice(1, 6).unwrap();
+        let slice = raid.get_slice((1..6)).unwrap();
         assert_eq!(slice, &[false, true, true, true, true])
     }
 
@@ -351,8 +369,20 @@ mod tests {
         raid.write_sequence(vec![true, true, true, true].as_slice());
 
         raid.data.disks[0].info[1] = false;
-        let slice = raid.get_slice(1, 6).unwrap();
+        let slice = raid.get_slice((1..6)).unwrap();
         assert_eq!(slice, &[false, true, true, true, true]);
         assert_eq!(raid.data.disks[0].info[1], true);
+    }
+
+    #[test]
+    fn raid_get_bit_test() {
+        let mut disks = Data::new(4, 16);
+        let mut raid = Raid::new(&mut disks);
+
+        raid.write_sequence(vec![false, false, false, true].as_slice());
+        raid.write_sequence(vec![false, true, true, true].as_slice());
+
+        assert_eq!(raid.get_bit(2).unwrap(), false);
+        assert_eq!(raid.get_bit(5).unwrap(), true);
     }
 }

@@ -2,15 +2,7 @@ use std::collections::HashMap;
 use std::ops::BitXor;
 
 pub fn num_to_bool(values: &[i32]) -> Vec<bool> {
-    let mut bits = vec![];
-    for value in values.iter() {
-        if *value == 0 {
-            bits.push(false);
-        } else {
-            bits.push(true);
-        }
-    }
-    bits
+    values.iter().map(|x| *x == 1).collect()
 }
 
 pub fn hamming_encode(bits: &Vec<bool>) -> Vec<bool> {
@@ -40,7 +32,7 @@ pub fn hamming_decode(bits: &[bool]) -> (Vec<bool>, Option<usize>) {
     if let Some(spot) = error_spot {
         let spot = spot - 1;
         let mut corrected = bits.to_owned();
-        corrected[spot] = corrected[spot].bitxor(true);
+        corrected[spot] ^= true;
         (remove_bits(&corrected), Some(spot))
     } else {
         (remove_bits(bits), None)
@@ -87,7 +79,7 @@ fn remove_bits(bits: &[bool]) -> Vec<bool> {
 }
 
 pub fn calculate_parity_bits(bits: &[bool]) -> HashMap<usize, bool> {
-    let mut parity_bits = HashMap::new();
+    let mut parity_bits = HashMap::with_capacity(parity_bits_count(bits.len()));
     for (index, _) in bits.iter().enumerate() {
         if is_power_of_two(index + 1) {
             parity_bits.insert(index, calculate_bit_at(bits, index + 1));
