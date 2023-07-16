@@ -3,4 +3,5 @@ RAID 2 emulated on finite buffers. A finite number of disks (=bool vectors) of t
 ### Links
 
 [RAID 2](https://en.wikipedia.org/wiki/Standard_RAID_levels#RAID_2)
+
 [Hamming code](https://en.wikipedia.org/wiki/Hamming_code)
