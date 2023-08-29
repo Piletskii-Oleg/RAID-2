@@ -1,9 +1,9 @@
-mod hamming;
-mod disks;
-
 fn main() {
-    let vec = vec![1,0,0,1,1,0,1,0];
-    let vec = hamming::num_to_bool(&vec);
-    let a = hamming::hamming_encode(&vec);
-    println!("{:?}", a);
+    let mut data = raid_2::raid::disks::Data::new(5, 1024);
+    let mut disks = raid_2::raid::raid::Raid::from_data(&mut data);
+
+    disks.write_sequence(&vec![false, false, true, false, false]).unwrap();
+    let slice = disks.get_slice(0..5).unwrap();
+
+    println!("{:?}", slice);
 }
