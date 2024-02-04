@@ -45,7 +45,7 @@ impl Disk {
     }
 
     pub fn get(&self, index: usize) -> Option<bool> {
-        self.info.get(index).map(|&bit| bit)
+        self.info.get(index).copied()
     }
 
     fn get_last(&self) -> Option<bool> {
