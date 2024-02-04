@@ -1,8 +1,9 @@
 use std::ops::Range;
 
 #[derive(Clone)]
-pub(crate) struct Disk {
-    pub(super) info: Vec<bool>,
+pub struct Disk {
+    pub info: Vec<bool>,
+    pub capacity: usize
 }
 
 pub struct DiskStorage {
@@ -22,29 +23,31 @@ struct File {
 }
 
 impl Disk {
-    pub fn new(disk_size: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
-            info: Vec::with_capacity(disk_size),
+            info: Vec::with_capacity(capacity),
+            capacity
         }
     }
 
-    pub fn write_bit(&mut self, bit: bool) {
+    pub fn write_bit(&mut self, bit: bool) -> Result<(), String> {
+        if self.info.len() >= self.capacity {
+            return Err("Disk size limit reached.".to_string());
+        }
+
         self.info.push(bit);
+        Ok(())
     }
 
     fn flip_at(&mut self, index: usize) {
         self.info[index] ^= true;
     }
 
-    pub fn get(&self, index: usize) -> Result<bool, &str> {
-        if index >= self.info.len() {
-            Err("Index was too big.")
-        } else {
-            Ok(self.info[index])
-        }
+    pub fn get(&self, index: usize) -> Option<bool> {
+        self.info.get(index).map(|&bit| bit)
     }
 
-    fn get_last(&self) -> Result<bool, &str> {
+    fn get_last(&self) -> Option<bool> {
         self.get(self.info.len() - 1)
     }
 }
@@ -60,15 +63,15 @@ impl DiskStorage {
         }
     }
 
-    pub fn write_sequence(&mut self, bits: &[bool]) -> Result<(), &str> {
+    pub fn write_sequence(&mut self, bits: &[bool]) -> Result<(), String> {
         if self.last_index + bits.len() >= self.total_capacity {
-            return Err("Not enough space");
+            return Err("Not enough space".to_string());
         }
 
         let previous_last_index = self.last_index;
         for (index, &bit) in bits.iter().enumerate() {
             let adjusted_index = (previous_last_index + index) % self.disk_count;
-            self.disks[adjusted_index].write_bit(bit);
+            self.disks[adjusted_index].write_bit(bit)?;
             if adjusted_index == self.disk_count - 1 {
                 self.last_layer += 1;
             }
@@ -77,11 +80,7 @@ impl DiskStorage {
         Ok(())
     }
 
-    pub fn get_bit(&self, index: usize) -> Result<bool, &str> {
-        if index > self.last_index {
-            return Err("Index was too big.");
-        }
-
+    pub fn get_bit(&self, index: usize) -> Option<bool> {
         let disk_number = index % self.disk_count;
         let adjusted_index = index / self.disk_count;
         self.disks[disk_number].get(adjusted_index)
@@ -93,9 +92,9 @@ impl DiskStorage {
         self.disks[disk_number].flip_at(adjusted_index);
     }
 
-    pub fn get_slice(&self, range: Range<usize>) -> Result<Vec<bool>, &str> {
+    pub fn get_slice(&self, range: Range<usize>) -> Result<Vec<bool>, String> {
         if range.end > self.last_index {
-            return Err("End index is larger than the biggest possible index.");
+            return Err("End index is larger than the biggest possible index.".to_string());
         }
 
         let mut result = Vec::with_capacity(range.len());
@@ -112,9 +111,9 @@ impl DiskStorage {
                 && self.last_index % self.disk_count == 0)
     }
 
-    pub(super) fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, &str> {
+    pub(super) fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, String> {
         if layer_index > self.last_index / self.disk_count || !self.is_layer_full(layer_index) {
-            return Err("Layer is not full");
+            return Err("Layer is not full".to_string());
         }
 
         let mut layer = Vec::with_capacity(self.disk_count);

@@ -62,7 +62,7 @@ impl<'a> Raid<'a> {
         code
     }
 
-    pub fn get_slice(&mut self, range: Range<usize>) -> Result<Vec<bool>, &str> {
+    pub fn get_slice(&mut self, range: Range<usize>) -> Result<Vec<bool>, String> {
         let starting_layer = self.data.get_layer_number(range.start);
         let ending_layer = self.data.get_layer_number(range.end - 1);
 
@@ -83,7 +83,7 @@ impl<'a> Raid<'a> {
         }
     }
 
-    pub fn get_bit(&mut self, index: usize) -> Result<bool, &str> {
+    pub fn get_bit(&mut self, index: usize) -> Result<bool, String> {
         match self.get_slice(index..index + 1) {
             Ok(element) => Ok(element[0]),
             Err(error) => Err(error),
