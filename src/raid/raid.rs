@@ -4,13 +4,13 @@ use crate::raid::get_power_of_two;
 use std::ops::Range;
 
 pub struct Raid<'a> {
-    data: &'a mut Data,
+    data: &'a mut DiskStorage,
     parity_disks: Vec<Disk>,
     parity_count: usize,
 }
 
 impl<'a> Raid<'a> {
-    pub fn from_data(data: &'a mut Data) -> Self {
+    pub fn from_data(data: &'a mut DiskStorage) -> Self {
         let parity_count = hamming::parity_bits_count(data.disk_count);
         let capacity = data.disks[0].info.capacity();
         Self {
@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn raid_write_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
         raid.write_sequence(
             vec![false, true, false, true, false, true, true, false, true].as_slice(),
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn raid_construct_hamming_code_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
         raid.write_sequence(
             vec![false, true, false, true, false, true, true, false, true].as_slice(),
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn raid_get_slice_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
 
         raid.write_sequence(vec![false, false, true, true].as_slice());
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn raid_get_slice_can_fix_error_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
 
         raid.write_sequence(vec![false, false, true, true].as_slice());
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn raid_get_bit_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
 
         raid.write_sequence(vec![false, false, false, true].as_slice());

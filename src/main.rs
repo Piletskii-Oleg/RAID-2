@@ -1,5 +1,5 @@
 fn main() {
-    let mut data = raid_2::Data::new(5, 1024);
+    let mut data = raid_2::DiskStorage::new(5, 1024);
     let mut disks = raid_2::Raid::from_data(&mut data);
 
     disks

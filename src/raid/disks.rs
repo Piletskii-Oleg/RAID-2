@@ -5,7 +5,7 @@ pub(crate) struct Disk {
     pub(super) info: Vec<bool>,
 }
 
-pub struct Data {
+pub struct DiskStorage {
     pub(super) disks: Vec<Disk>,
     pub(super) disk_count: usize,
     pub(super) last_index: usize,
@@ -49,7 +49,7 @@ impl Disk {
     }
 }
 
-impl Data {
+impl DiskStorage {
     pub fn new(disk_count: usize, disk_size: usize) -> Self {
         Self {
             disk_count,
@@ -131,7 +131,7 @@ impl Data {
 
 #[cfg(test)]
 mod tests {
-    use crate::raid::disks::{Data, Disk};
+    use crate::raid::disks::{DiskStorage, Disk};
 
     #[test]
     fn disk_write_get_test() {
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn disks_write_single_sequence_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
 
         disks.write_sequence(vec![false, false, true, true].as_slice());
         assert_eq!(disks.disks[0].get(0).unwrap(), false);
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn disks_write_multi_layer_sequence_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
         disks.write_sequence(vec![true, false, true, true, false, false].as_slice());
         assert_eq!(disks.disks[0].get(0).unwrap(), true);
         assert_eq!(disks.disks[1].get(0).unwrap(), false);
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn disks_read_slice_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
 
         disks.write_sequence(vec![false, false, true, true].as_slice());
         disks.write_sequence(vec![true, true, true, true].as_slice());
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn disks_read_bit_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
 
         disks.write_sequence(vec![false, true, false, true].as_slice());
         disks.write_sequence(vec![false, true, true, false].as_slice());
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn disks_get_layer_test() {
-        let mut disks = Data::new(4, 16);
+        let mut disks = DiskStorage::new(4, 16);
 
         disks
             .write_sequence(
