@@ -3,7 +3,7 @@ use std::ops::Range;
 #[derive(Clone)]
 pub struct Disk {
     pub info: Vec<bool>,
-    pub capacity: usize
+    pub capacity: usize,
 }
 
 pub struct DiskStorage {
@@ -11,6 +11,7 @@ pub struct DiskStorage {
     pub(super) disk_count: usize,
     pub(super) last_index: usize,
     pub(super) last_layer: usize,
+    pub(super) disk_capacity: usize,
     pub(super) total_capacity: usize,
 }
 
@@ -26,7 +27,7 @@ impl Disk {
     pub fn new(capacity: usize) -> Self {
         Self {
             info: Vec::with_capacity(capacity),
-            capacity
+            capacity,
         }
     }
 
@@ -59,6 +60,7 @@ impl DiskStorage {
             disks: vec![Disk::new(disk_size); disk_count],
             last_index: 0,
             last_layer: 0,
+            disk_capacity: disk_size,
             total_capacity: disk_count * disk_size,
         }
     }
@@ -81,6 +83,10 @@ impl DiskStorage {
     }
 
     pub fn get_bit(&self, index: usize) -> Option<bool> {
+        if index > self.last_index {
+            return None;
+        }
+
         let disk_number = index % self.disk_count;
         let adjusted_index = index / self.disk_count;
         self.disks[disk_number].get(adjusted_index)
@@ -130,13 +136,13 @@ impl DiskStorage {
 
 #[cfg(test)]
 mod tests {
-    use crate::raid::disks::{DiskStorage, Disk};
+    use crate::raid::disks::{Disk, DiskStorage};
 
     #[test]
     fn disk_write_get_test() {
         let mut disk = Disk::new(16);
-        disk.write_bit(false);
-        disk.write_bit(true);
+        disk.write_bit(false).unwrap();
+        disk.write_bit(true).unwrap();
 
         assert_eq!(false, disk.get(0).unwrap());
         assert_eq!(true, disk.get(1).unwrap());
@@ -145,8 +151,8 @@ mod tests {
     #[test]
     fn disk_get_last_test() {
         let mut disk = Disk::new(16);
-        disk.write_bit(false);
-        disk.write_bit(true);
+        disk.write_bit(false).unwrap();
+        disk.write_bit(true).unwrap();
 
         assert_eq!(true, disk.get_last().unwrap());
     }
@@ -155,14 +161,14 @@ mod tests {
     fn disks_write_single_sequence_test() {
         let mut disks = DiskStorage::new(4, 16);
 
-        disks.write_sequence(vec![false, false, true, true].as_slice());
+        disks.write_sequence(&[false, false, true, true]).unwrap();
         assert_eq!(disks.disks[0].get(0).unwrap(), false);
         assert_eq!(disks.disks[1].get(0).unwrap(), false);
         assert_eq!(disks.disks[2].get(0).unwrap(), true);
         assert_eq!(disks.disks[3].get(0).unwrap(), true);
         assert_eq!(disks.last_index, 4);
 
-        disks.write_sequence(vec![true, true, false, true].as_slice());
+        disks.write_sequence(&[true, true, false, true]).unwrap();
         assert_eq!(disks.disks[0].get(1).unwrap(), true);
         assert_eq!(disks.disks[1].get(1).unwrap(), true);
         assert_eq!(disks.disks[2].get(1).unwrap(), false);
@@ -173,7 +179,7 @@ mod tests {
     #[test]
     fn disks_write_multi_layer_sequence_test() {
         let mut disks = DiskStorage::new(4, 16);
-        disks.write_sequence(vec![true, false, true, true, false, false].as_slice());
+        disks.write_sequence(&[true, false, true, true, false, false]).unwrap();
         assert_eq!(disks.disks[0].get(0).unwrap(), true);
         assert_eq!(disks.disks[1].get(0).unwrap(), false);
         assert_eq!(disks.disks[2].get(0).unwrap(), true);
@@ -182,7 +188,7 @@ mod tests {
         assert_eq!(disks.disks[0].get(1).unwrap(), false);
         assert_eq!(disks.disks[1].get(1).unwrap(), false);
 
-        disks.write_sequence(vec![true, false, true].as_slice());
+        disks.write_sequence(&[true, false, true]).unwrap();
         assert_eq!(disks.disks[2].get(1).unwrap(), true);
         assert_eq!(disks.disks[3].get(1).unwrap(), false);
         assert_eq!(disks.disks[0].get(2).unwrap(), true);
@@ -192,10 +198,10 @@ mod tests {
     fn disks_read_slice_test() {
         let mut disks = DiskStorage::new(4, 16);
 
-        disks.write_sequence(vec![false, false, true, true].as_slice());
-        disks.write_sequence(vec![true, true, true, true].as_slice());
+        disks.write_sequence(&[false, false, true, true]).unwrap();
+        disks.write_sequence(&[true, true, true, true]).unwrap();
 
-        let slice = disks.get_slice((1..6)).unwrap();
+        let slice = disks.get_slice(1..6).unwrap();
         assert_eq!(slice, &[false, true, true, true, true])
     }
 
@@ -203,8 +209,8 @@ mod tests {
     fn disks_read_bit_test() {
         let mut disks = DiskStorage::new(4, 16);
 
-        disks.write_sequence(vec![false, true, false, true].as_slice());
-        disks.write_sequence(vec![false, true, true, false].as_slice());
+        disks.write_sequence(&[false, true, false, true]).unwrap();
+        disks.write_sequence(&[false, true, true, false]).unwrap();
 
         assert_eq!(disks.get_bit(3).unwrap(), true);
         assert_eq!(disks.get_bit(4).unwrap(), false);
@@ -218,13 +224,16 @@ mod tests {
         let mut disks = DiskStorage::new(4, 16);
 
         disks
-            .write_sequence(
-                vec![false, true, false, true, false, true, true, false, true].as_slice(),
-            )
+            .write_sequence(&[
+                false, true, false, true, false, true, true, false, true,
+            ])
             .unwrap();
 
         assert_eq!(disks.get_data_layer(0).unwrap(), [false, true, false, true]);
         assert_eq!(disks.get_data_layer(1).unwrap(), [false, true, true, false]);
-        assert_eq!(disks.get_data_layer(2), Err("Layer is not full"));
+        assert_eq!(
+            disks.get_data_layer(2),
+            Err("Layer is not full".to_string())
+        );
     }
 }

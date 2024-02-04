@@ -12,7 +12,7 @@ pub struct Raid<'a> {
 impl<'a> Raid<'a> {
     pub fn from_data(data: &'a mut DiskStorage) -> Self {
         let parity_count = hamming::parity_bits_count(data.disk_count);
-        let capacity = data.disks[0].info.capacity();
+        let capacity = data.disk_capacity;
         Self {
             parity_disks: vec![Disk::new(capacity); parity_count],
             data,
@@ -20,13 +20,15 @@ impl<'a> Raid<'a> {
         }
     }
 
-    fn encode_single_sequence(&mut self, bits: &[bool]) {
+    fn encode_single_sequence(&mut self, bits: &[bool]) -> Result<(), String> {
         let bits_extra = hamming::add_parity_bits(bits);
         let parity_bits = hamming::calculate_parity_bits(&bits_extra);
 
         for (index, bit) in parity_bits.into_iter() {
-            self.parity_disks[get_power_of_two(index + 1)].write_bit(bit);
+            self.parity_disks[get_power_of_two(index + 1)].write_bit(bit)?; // not very safe
         }
+
+        Ok(())
     }
 
     pub fn write_sequence(&mut self, bits: &[bool]) -> Result<(), String> {
@@ -36,9 +38,7 @@ impl<'a> Raid<'a> {
             Ok(()) => {
                 let after_layer = self.data.last_layer;
                 for layer in before_layer..after_layer {
-                    self.encode_single_sequence(
-                        self.data.get_data_layer(layer).unwrap().as_slice(),
-                    );
+                    self.encode_single_sequence(&self.data.get_data_layer(layer).unwrap());
                 }
                 Ok(())
             }
@@ -100,9 +100,9 @@ mod tests {
     fn raid_write_test() {
         let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
-        raid.write_sequence(
-            vec![false, true, false, true, false, true, true, false, true].as_slice(),
-        );
+        raid.write_sequence(&[
+            false, true, false, true, false, true, true, false, true,
+        ]).unwrap();
 
         assert_eq!(raid.parity_disks[0].get(0).unwrap(), false);
         assert_eq!(raid.parity_disks[1].get(0).unwrap(), true);
@@ -121,18 +121,18 @@ mod tests {
         assert_eq!(raid.parity_disks[1].get(1).unwrap(), true);
         assert_eq!(raid.parity_disks[2].get(1).unwrap(), false);
 
-        assert_eq!(raid.parity_disks[0].get(2), Err("Index was too big."));
-        assert_eq!(raid.parity_disks[1].get(2), Err("Index was too big."));
-        assert_eq!(raid.parity_disks[2].get(2), Err("Index was too big."));
+        assert_eq!(raid.parity_disks[0].get(2), None);
+        assert_eq!(raid.parity_disks[1].get(2), None);
+        assert_eq!(raid.parity_disks[2].get(2), None);
     }
 
     #[test]
     fn raid_construct_hamming_code_test() {
         let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
-        raid.write_sequence(
-            vec![false, true, false, true, false, true, true, false, true].as_slice(),
-        );
+        raid.write_sequence(&[
+            false, true, false, true, false, true, true, false, true,
+        ]).unwrap();
 
         let code = raid.construct_hamming_code(0);
         assert_eq!(code, [false, true, false, false, true, false, true]);
@@ -143,10 +143,10 @@ mod tests {
         let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
 
-        raid.write_sequence(vec![false, false, true, true].as_slice());
-        raid.write_sequence(vec![true, true, true, true].as_slice());
+        raid.write_sequence(&[false, false, true, true]).unwrap();
+        raid.write_sequence(&[true, true, true, true]).unwrap();
 
-        let slice = raid.get_slice((1..6)).unwrap();
+        let slice = raid.get_slice(1..6).unwrap();
         assert_eq!(slice, &[false, true, true, true, true]);
 
         let slice = raid.get_slice(4..8).unwrap();
@@ -158,11 +158,11 @@ mod tests {
         let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
 
-        raid.write_sequence(vec![false, false, true, true].as_slice());
-        raid.write_sequence(vec![true, true, true, true].as_slice());
+        raid.write_sequence(&[false, false, true, true]).unwrap();
+        raid.write_sequence(&[true, true, true, true]).unwrap();
 
         raid.data.disks[0].info[1] = false;
-        let slice = raid.get_slice((1..6)).unwrap();
+        let slice = raid.get_slice(1..6).unwrap();
         assert_eq!(slice, &[false, true, true, true, true]);
         assert_eq!(raid.data.disks[0].info[1], true);
     }
@@ -172,8 +172,8 @@ mod tests {
         let mut disks = DiskStorage::new(4, 16);
         let mut raid = Raid::from_data(&mut disks);
 
-        raid.write_sequence(vec![false, false, false, true].as_slice());
-        raid.write_sequence(vec![false, true, true, true].as_slice());
+        raid.write_sequence(&[false, false, false, true]).unwrap();
+        raid.write_sequence(&[false, true, true, true]).unwrap();
 
         assert_eq!(raid.get_bit(2).unwrap(), false);
         assert_eq!(raid.get_bit(5).unwrap(), true);
