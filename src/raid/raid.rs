@@ -21,11 +21,11 @@ impl<'a> Raid<'a> {
     }
 
     fn encode_single_sequence(&mut self, bits: &[bool]) {
-        let bits_extra = hamming::add_bits(bits);
+        let bits_extra = hamming::add_parity_bits(bits);
         let parity_bits = hamming::calculate_parity_bits(&bits_extra);
 
-        for (index, value) in parity_bits.into_iter() {
-            self.parity_disks[get_power_of_two(index + 1)].write(value);
+        for (index, bit) in parity_bits.into_iter() {
+            self.parity_disks[get_power_of_two(index + 1)].write_bit(bit);
         }
     }
 
@@ -75,9 +75,9 @@ impl<'a> Raid<'a> {
 
     fn try_fix_error(&mut self, start_index: usize, layer: usize) {
         // TODO: только для data-битов
-        if let (_, Some(spot)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
+        if let (_, Some(spot)) = hamming::decode(&self.construct_hamming_code(layer)) {
             self.data.flip_bit_at(start_index + spot + 1);
-            if let (_, Some(_)) = hamming::hamming_decode(&self.construct_hamming_code(layer)) {
+            if let (_, Some(_)) = hamming::decode(&self.construct_hamming_code(layer)) {
                 panic!("no way bro");
             }
         }

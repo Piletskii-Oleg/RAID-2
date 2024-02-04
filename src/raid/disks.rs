@@ -22,13 +22,13 @@ struct File {
 }
 
 impl Disk {
-    pub(super) fn new(disk_size: usize) -> Self {
+    pub fn new(disk_size: usize) -> Self {
         Self {
             info: Vec::with_capacity(disk_size),
         }
     }
 
-    pub(super) fn write(&mut self, bit: bool) {
+    pub fn write_bit(&mut self, bit: bool) {
         self.info.push(bit);
     }
 
@@ -36,7 +36,7 @@ impl Disk {
         self.info[index] ^= true;
     }
 
-    pub(super) fn get(&self, index: usize) -> Result<bool, &str> {
+    pub fn get(&self, index: usize) -> Result<bool, &str> {
         if index >= self.info.len() {
             Err("Index was too big.")
         } else {
@@ -66,9 +66,9 @@ impl Data {
         }
 
         let previous_last_index = self.last_index;
-        for (index, value) in bits.iter().enumerate() {
+        for (index, &bit) in bits.iter().enumerate() {
             let adjusted_index = (previous_last_index + index) % self.disk_count;
-            self.disks[adjusted_index].write(*value);
+            self.disks[adjusted_index].write_bit(bit);
             if adjusted_index == self.disk_count - 1 {
                 self.last_layer += 1;
             }
@@ -136,8 +136,8 @@ mod tests {
     #[test]
     fn disk_write_get_test() {
         let mut disk = Disk::new(16);
-        disk.write(false);
-        disk.write(true);
+        disk.write_bit(false);
+        disk.write_bit(true);
 
         assert_eq!(false, disk.get(0).unwrap());
         assert_eq!(true, disk.get(1).unwrap());
@@ -146,8 +146,8 @@ mod tests {
     #[test]
     fn disk_get_last_test() {
         let mut disk = Disk::new(16);
-        disk.write(false);
-        disk.write(true);
+        disk.write_bit(false);
+        disk.write_bit(true);
 
         assert_eq!(true, disk.get_last().unwrap());
     }
