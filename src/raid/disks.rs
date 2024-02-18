@@ -1,4 +1,5 @@
 use std::ops::Range;
+use crate::raid::Data;
 
 #[derive(Clone)]
 pub struct Disk {
@@ -131,6 +132,48 @@ impl DiskStorage {
 
     pub(super) fn get_layer_number(&self, index: usize) -> usize {
         index / self.disk_count
+    }
+}
+
+impl Data for DiskStorage {
+    fn disk_count(&self) -> usize {
+        self.disk_count
+    }
+
+    fn disk_capacity(&self) -> usize {
+        self.disk_capacity
+    }
+
+    fn write_sequence(&mut self, bits: &[bool]) -> Result<(), String> {
+        self.write_sequence(bits)
+    }
+
+    fn get_bit(&self, index: usize) -> Option<bool> {
+        self.get_bit(index)
+    }
+
+    fn get_slice(&self, range: Range<usize>) -> Result<Vec<bool>, String> {
+        self.get_slice(range)
+    }
+
+    fn last_layer(&self) -> usize {
+        self.last_layer
+    }
+
+    fn get_data_layer(&self, layer_index: usize) -> Result<Vec<bool>, String> {
+        self.get_data_layer(layer_index)
+    }
+
+    fn get_layer_number(&self, index: usize) -> usize {
+        self.get_layer_number(index)
+    }
+
+    fn get_disk(&self, index: usize) -> &Disk {
+        &self.disks[index]
+    }
+
+    fn flip_bit_at(&mut self, index: usize) {
+        self.flip_bit_at(index)
     }
 }
 
