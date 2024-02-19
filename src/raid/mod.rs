@@ -4,7 +4,7 @@ pub mod disks;
 
 use std::ops::Range;
 
-pub trait Data {
+pub trait Storage {
     fn disk_count(&self) -> usize;
     fn disk_capacity(&self) -> usize;
     fn write_sequence(&mut self, bits: &[bool]) -> Result<(), String>;

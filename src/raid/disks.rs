@@ -1,5 +1,5 @@
 use std::ops::Range;
-use crate::raid::Data;
+use crate::raid::Storage;
 
 #[derive(Clone)]
 pub struct Disk {
@@ -135,7 +135,7 @@ impl DiskStorage {
     }
 }
 
-impl Data for DiskStorage {
+impl Storage for DiskStorage {
     fn disk_count(&self) -> usize {
         self.disk_count
     }
